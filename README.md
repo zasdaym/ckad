@@ -344,6 +344,87 @@ show tables;
 - Try to create a StatefulSet for postgres.
 - Check [here](https://hub.docker.com/_/postgres) for information related to the container image.
 
+## Job
+
+```bash
+cat <<EOF > backup-job.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: backup
+spec:
+  template:
+    spec:
+      containers:
+      - name: backup
+        image: busybox:1.37.0
+        command: ["/bin/sh",  "-c", "cp /etc/hostname /mnt/hostname-$(date +%s).txt"]
+        volumeMounts:
+        - name: data
+          mountPath: /mnt
+      restartPolicy: Never
+      volumes:
+      - name: data
+        hostPath:
+          path: /data/backup
+          type: DirectoryOrCreate
+  backoffLimit: 3
+EOF
+kubectl apply -f backup-job.yaml
+
+kubectl get pods -o wide
+
+# On worker1 or worker2
+ls /data/backup
+```
+
+## CronJob
+
+```bash
+cat <<EOF > backup-cronjob.yaml
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "* * * * *"
+  template:
+    spec:
+      containers:
+      - name: backup
+        image: busybox:1.37.0
+        command: ["/bin/sh",  "-c", "cp /etc/hostname /mnt/hostname-$(date +%s).txt"]
+        volumeMounts:
+        - name: data
+          mountPath: /mnt
+      restartPolicy: OnFailure
+      volumes:
+      - name: data
+        hostPath:
+          path: /data/backup
+          type: DirectoryOrCreate
+  backoffLimit: 3
+EOF
+kubectl apply -f backup-cronjob.yaml
+
+kubectl get pods -o wide
+
+# On worker1 or worker2
+ls /data/backup
+
+kubectl delete cj backup
+```
+
+### Review
+
+- Create CronJob named `backup-kubenesia-com` to backup https://kubenesia.com every 5 minutes. File should be visible on worker with location `/data/kubenesia-backup/index.html`.
+- Simulate a scheduled database backup:
+  - Create a `postgres` StatefulSet with database `test_db` and a single table named `users`.
+  - Create a Service named `postgres`.
+  - Create a CronJob named `postgres-backup` that run `pg_dump -h postgres -U postgres test_db -f /mnt/test_db.sql`. Use environment variable `PGPASSWORD`.
+  - The backup file should be visible on worker node on `/data/postgres-backup/test_db.sql`.
+  - Backup should be updated every hour.
+
 ## Sidecar container
 
 ```bash
@@ -532,48 +613,793 @@ kubectl delete pv nginx
 
 # Application Deployment
 
-## Blue/Green deployment
-
 ## Canary deployment
+
+```bash
+cat <<EOF >nginx-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx
+  ports:
+  - port: 80
+    targetPort: 80
+EOF
+kubectl apply -f nginx-service.yaml
+
+cat <<EOF >nginx-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27.1
+EOF
+kubectl apply -f nginx-dpeloyment.yaml
+
+kubectl port-forward svc/nginx --address=0.0.0.0 1234:80
+
+curl -I localhost:1234 | grep -i nginx
+
+cat <<EOF >nginx-canary-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-canary
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+      canary: "true"
+  template:
+    metadata:
+      labels:
+        app: nginx
+        canary: "true"
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27.2
+EOF
+kubectl apply -f nginx-canary-deployment.yaml
+
+kubectl port-forward svc/nginx --address=0.0.0.0 1234:80
+
+curl -I localhost:1234 | grep -i nginx
+curl -I localhost:1234 | grep -i nginx
+curl -I localhost:1234 | grep -i nginx
+```
 
 ## Rolling update
 
+````bash
+cat <<EOF >kubeapp.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeapp
+  labels:
+    app: kubeapp
+spec:
+  replicas: 5
+  selector:
+    matchLabels:
+      app: kubeapp
+  template:
+    metadata:
+      labels:
+        app: kubeapp
+    spec:
+      containers:
+      - name: kubeapp
+        image: kubenesia/kubeapp:1.0.0
+EOF
+
+kubectl apply -f kubeapp.yaml
+kubectl get pods
+
+kubectl set image deployment kubeapp kubeapp=kubenesia/kubeapp:1.1.0
+kubectl get pods
+
+```bash
+cat <<EOF >kubeapp.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kubeapp
+  name: kubeapp
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: kubeapp
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 50%
+  template:
+    metadata:
+      labels:
+        app: kubeapp
+    spec:
+      containers:
+        - image: kubenesia/kubeapp:1.2.0
+          name: kubeapp
+EOF
+kubectl apply -f kubeapp.yaml
+kubectl get pods
+````
+
 ## Recreate update
+
+```bash
+cat <<EOF >kubeapp.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kubeapp
+  name: kubeapp
+spec:
+  replicas: 4
+  selector:
+    matchLabels:
+      app: kubeapp
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: kubeapp
+    spec:
+      containers:
+        - image: kubenesia/kubeapp:1.0.0
+          name: kubeapp
+EOF
+
+kubectl apply -f kubeapp.yaml
+kubectl get pods
+
+kubectl set image deployment kubeapp kubeapp=kubenesia/kubeapp:1.1.0
+kubectl get pods
+```
 
 ## Helm
 
+### Install
+
+```bash
+sudo apt-get install git yq -y
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+which helm
+helm --version
+```
+
+### Create chart
+
+```bash
+helm create chart-test
+cd chart-test
+ls templates
+cat values.yaml
+```
+
+### Deploy chart using custom values
+
+```bash
+cat <<EOF >/tmp/custom-values.yaml
+replicaCount: 2
+image:
+  repository: nginx
+  tag: 1.27.2
+EOF
+helm install nginx . -f /tmp/custom-values.yaml
+
+helm ls
+kubectl get pods
+kubectl get svc
+
+helm uninstall nginx
+```
+
+### Deploy existing chart using custom values
+
+```bash
+cat <<EOF >/tmp/blog-values.yaml
+wordpressUsername: robot
+wordpressPassword: P@ssw0rd
+wordpressEmail: robot@gmail.com
+wordpressFirstName: Robot
+wordpressLastName: Robot
+wordpressBlogName: Blog of Robot
+persistence:
+  enabled: false
+mariadb:
+  primary:
+    persistence:
+      enabled: false
+EOF
+helm install blog oci://registry-1.docker.io/bitnamicharts/wordpress -f /tmp/blog-values.yaml
+
+kubectl get pods
+export NODE_PORT=$(kubectl get svc blog-wordpress -o yaml | yq .spec.ports[0].nodePort)
+echo $NODE_PORT
+curl localhost:$NODE_PORT
+
+helm uninstall blog
+```
+
 ## Kustomize
+
+```bash
+mkdir nginx-kustomize
+
+cat <<EOF >nginx-kustomize/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  type: ClusterIP
+  selector:
+    app: nginx
+  ports:
+  - port: 80
+    targetPort: 80
+EOF
+
+cat <<EOF >nginx-kustomize/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+spec:
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27.1
+EOF
+
+cat <<EOF >nginx-kustomize/kustomization.yaml
+resources:
+- service.yaml
+- deployment.yaml
+EOF
+kubectl apply -k nginx-kustomize
+kubectl get pods
+kuebctl get pods -l app=nginx -o yaml | grep -i image
+
+cat <<EOF >nginx-kustomize/kustomization.yaml
+resources:
+- service.yaml
+- deployment.yaml
+images:
+- name: nginx
+  newTag: 1.27.2
+EOF
+kubectl apply -k nginx-kustomize
+kubectl get pods
+kuebctl get pods -l app=nginx -o yaml | grep -i image
+```
 
 # Application Observability and Maintenance
 
 ## API deprecations
 
-## Startup Probe
+```bash
+kubectl api-versions
 
-## Readiness Probe
+cat <<EOF >nginx-old-deployment.yaml
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: nginx-old
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-old
+  template:
+    metadata:
+      labels:
+        app: nginx-old
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:1.27.2
+EOF
+kubectl apply -f nginx-old-deployment.yaml
+```
 
-## Liveness Probe
+### Startup Probe
+
+Used to protect slow starting containers from serving traffic when they are not ready.
+
+```bash
+cat <<EOF >kuard.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kuard
+  name: kuard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kuard
+  template:
+    metadata:
+      labels:
+        app: kuard
+    spec:
+      containers:
+      - image: gcr.io/kuar-demo/kuard-amd64:blue
+        name: kuard-amd64
+        startupProbe:
+          httpGet:
+            path: /ready
+            port: 6000
+EOF
+
+kubectl apply -f kuard.yaml
+kubectl get pods
+kubectl describe pods -l app=kuard
+
+sed -i 's/6000/8080/g' kuard.yaml
+kubectl apply -f kuard.yaml
+kubectl describe pods -l app=kuard
+```
+
+### Readiness Probe
+
+Used to check the health of the Pod periodically. Pod will be not be restarted if fail, only excluded from traffic serving.
+
+```bash
+cat <<EOF >kuard.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kuard
+  name: kuard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kuard
+  template:
+    metadata:
+      labels:
+        app: kuard
+    spec:
+      containers:
+      - image: gcr.io/kuar-demo/kuard-amd64:blue
+        name: kuard-amd64
+        startupProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+        readinessProbe:
+          httpGet:
+            path: /healthy
+            port: 8080
+EOF
+
+kubectl apply -f kuard.yaml
+kubectl get pods
+kubectl describe pods -l app=kuard
+```
+
+### Liveness Probe
+
+Used to check the health of the Pod periodically. Pod will be restarted if fail.
+
+```bash
+cat <<EOF >kuard.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kuard
+  name: kuard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kuard
+  template:
+    metadata:
+      labels:
+        app: kuard
+    spec:
+      containers:
+      - image: gcr.io/kuar-demo/kuard-amd64:blue
+        name: kuard-amd64
+        startupProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+        livenessProbe:
+          httpGet:
+            path: /healthy
+            port: 8080
+EOF
+
+kubectl apply -f kuard.yaml
+kubectl get pods
+kubectl describe pods -l app=kuard
+```
+
+### Review
+
+- Try to create a Deployment with image `gcr.io/kuar-demo/kuard-amd64:blue` with 5 replicas and access port 8080 of the container.
+- Try to create a Deployment with the following spec:
+  - Name: `web`
+  - Two images: `nginx:1.27.2` and `gcr.io/kuar-demo/kuard-amd64:blue`
+  - Replica: 10
+  - Startup probe to nginx
+  - Liveness probe to kuard
 
 ## Inspect container logs
+
+```bash
+kubectl logs deployment/kuard
+kubectl logs -f deployment/kuard
+```
 
 # Application Environment, Configuration and Security
 
 ## Requests, limits, and quotas
 
+- Used to control the resource usage (CPU and memory) of a Pod.
+- Best practice: do not use CPU limit to prevent throttling: (https://home.robusta.dev/blog/stop-using-cpu-limits)
+- Always define resource requests
+  - Easier capacity planning
+  - Less surprise
+
+### Install metrics-server
+
+```bash
+curl -fsSLo metrics-server.yaml https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+vim metrics-server.yaml
+# add --kubelet-insecure-tls under args
+kubectl apply -f metrics-server.yaml
+kubectl -n kube-system get pods
+kubectl top nodes
+kubectl top pods
+```
+
+### Create Pod with resource requests and limits
+
+```bash
+cat <<EOF >pod-requests-limits.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubeapp-requests-limits
+spec:
+  containers:
+  - name: kubeapp
+    image: kubenesia/kubeapp
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 250m
+      limits:
+        memory: 256Mi
+        cpu: 500m
+EOF
+
+kubectl apply -f pod-requests-limits.yaml
+
+kubectl get pods
+kubectl describe pods
+
+kubectl describe node worker1
+kubectl describe node worker2
+```
+
+### Create Pod with bad resource requests and limits
+
+- If resource requests can't be fulfilled by any node, then Pod will stuck in Pending state.
+
+```bash
+cat <<EOF >pod-requests-limits.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kubeapp-requests-limits
+spec:
+  containers:
+  - name: kubeapp
+    image: kubenesia/kubeapp:1.2.0
+    resources:
+      requests:
+        memory: 128Gi
+        cpu: 250m
+      limits:
+        memory: 256Gi
+        cpu: 500m
+EOF
+
+kubectl apply -f pod-requests-limits.yaml
+
+kubectl get pods
+kubectl describe pods
+
+kubectl describe node worker1
+kubectl describe node worker2
+
+kubectl delete pod kubeapp-requests-limits
+```
+
 ## ConfigMap
+
+### Create ConfigMap
+
+```bash
+cat <<EOF >kubeapp-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kubeapp
+data:
+  MODE: development
+  COLOR: blue
+  SERVICE: kubeapp
+EOF
+
+kubectl apply -f kubeapp-configmap.yaml
+kubectl get cm kubeapp
+kubectl get cm kubeapp -o yaml
+```
+
+### ConfigMap as env variable
+
+```bash
+cat <<EOF >kubeapp-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kubeapp
+  name: kubeapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubeapp
+  template:
+    metadata:
+      labels:
+        app: kubeapp
+    spec:
+      containers:
+      - image: kubenesia/kubeapp:1.2.0
+        name: kubeapp
+        envFrom:
+          - configMapRef:
+              name: kubeapp
+EOF
+
+kubectl apply -f kubeapp-deployment.yaml
+kubectl exec -ti deployment/kubeapp -- sh
+printenv | egrep 'COLOR=|MODE=|SERVICE='
+exit
+```
+
+### ConfigMap as file
+
+```bash
+cat <<EOF >kubeapp-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kubeapp
+  name: kubeapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubeapp
+  template:
+    metadata:
+      labels:
+        app: kubeapp
+    spec:
+      containers:
+      - image: kubenesia/kubeapp:1.2.0
+        name: kubeapp
+        volumeMounts:
+          - mountPath: /data/config
+            name: config
+      volumes:
+        - name: config
+          configMap:
+            name: kubeapp
+EOF
+
+kubectl apply -f kubeapp-deployment.yaml
+kubectl exec -ti deployment/kubeapp -- sh
+ls /data/config
+cat /data/config
+exit
+```
 
 ## Secret
 
-## ServiceAccount
+### Create Secret
+
+```bash
+kubectl create secret generic kubeapp --from-literal=MODE=development --from-literal=COLOR=blue
+kubectl get secret
+kubectl get secret kubeapp -o yaml
+```
+
+### Secret as env variable
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kubeapp
+  name: kubeapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubeapp
+  template:
+    metadata:
+      labels:
+        app: kubeapp
+    spec:
+      containers:
+      - image: kubenesia/kubeapp:1.2.0
+        name: kubeapp
+        envFrom:
+          - secretRef:
+              name: kubeapp
+EOF
+
+kubectl exec -ti deployment/kubeapp -- sh
+printenv | egrep 'COLOR=|MODE=|SERVICE='
+exit
+```
+
+### Secret as file
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kubeapp
+  name: kubeapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubeapp
+  template:
+    metadata:
+      labels:
+        app: kubeapp
+    spec:
+      containers:
+      - image: kubenesia/kubeapp:1.2.0
+        name: kubeapp
+        volumeMounts:
+          - mountPath: /data/config
+            name: config
+      volumes:
+        - name: config
+          configMap:
+            name: kubeapp
+EOF
+
+kubectl exec -ti deployment/kubeapp -- sh
+ls /data/config
+cat /data/config
+exit
+```
+
+### Review
+
+- Create a `postgres` StatefulSet as before, but use a `Secret` to configure `POSTGRES_PASSWORD`.
+- Check with `kubectl exec -ti postgres-0 -- psql -h 127.0.0.1 -U postgres`
 
 ## SecurityContext
+
+```bash
+cat <<EOF >node-hello-pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-hello
+spec:
+  containers:
+  - name: node-hello
+    image: gcr.io/google-samples/node-hello:1.0
+EOF
+kubectl apply -f node-hello-pod.yaml
+kubectl exec -ti node-hello -- bash
+whoami
+touch test.txt
+ls -ls test.txt
+exit
+
+cat <<EOF >node-hello-pod.yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  name: node-hello
+spec:
+  containers:
+  - name: node-hello
+    image: gcr.io/google-samples/node-hello:1.0
+    securityContext:
+      runAsUser: 1000
+      allowPrivilegeEscalation: false
+EOF
+kubectl apply -f node-hello-pod.yaml --force
+kubectl exec -ti node-hello -- bash
+whoami
+touch test.txt
+exit
+
+kubectl delete -f node-hello-pod.yaml
+```
 
 # Services and Networking
 
 ## ClusterIP
 
+```bash
+
+```
+
 ## NodePort
+
+```bash
+
+```
 
 ## NetworkPolicy
 
+```bash
+
+```
+
 ## Ingress
+
+```bash
+
+```
