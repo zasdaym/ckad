@@ -857,9 +857,11 @@ helm uninstall blog
 ## Kustomize
 
 ```bash
-mkdir nginx-kustomize
+mkdir ~/nginx-kustomize
+cd ~/nginx-kustomize
+mkdir base development production
 
-cat <<EOF >nginx-kustomize/service.yaml
+cat <<EOF >base/service.yaml
 apiVersion: v1
 kind: Service
 metadata:
@@ -873,7 +875,7 @@ spec:
     targetPort: 80
 EOF
 
-cat <<EOF >nginx-kustomize/deployment.yaml
+cat <<EOF >base/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -892,26 +894,44 @@ spec:
         image: nginx:1.27.1
 EOF
 
-cat <<EOF >nginx-kustomize/kustomization.yaml
+cat <<EOF >base/kustomization.yaml
 resources:
 - service.yaml
 - deployment.yaml
 EOF
-kubectl apply -k nginx-kustomize
-kubectl get pods
-kuebctl get pods -l app=nginx -o yaml | grep -i image
 
-cat <<EOF >nginx-kustomize/kustomization.yaml
+cat <<EOF >development/kustomization.yaml
 resources:
-- service.yaml
-- deployment.yaml
-images:
-- name: nginx
-  newTag: 1.27.2
+- ../base
+patches:
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: nginx
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 2
 EOF
-kubectl apply -k nginx-kustomize
-kubectl get pods
-kuebctl get pods -l app=nginx -o yaml | grep -i image
+
+cat <<EOF >production/kustomization.yaml
+resources:
+- ../base
+patches:
+- target:
+    group: apps
+    version: v1
+    kind: Deployment
+    name: nginx
+  patch: |-
+    - op: replace
+      path: /spec/replicas
+      value: 5
+EOF
+
+kubectl kustomize development
+kubectl kustomize production
 ```
 
 # Application Observability and Maintenance
@@ -940,6 +960,7 @@ spec:
       - name: nginx
         image: nginx:1.27.2
 EOF
+vim nginx-old-deployment.yaml # fix the apiVersion
 kubectl apply -f nginx-old-deployment.yaml
 ```
 
@@ -1388,28 +1409,277 @@ exit
 kubectl delete -f node-hello-pod.yaml
 ```
 
-# Services and Networking
+# Services & Networking
 
-## ClusterIP
+- Containers inside the same pod can communicate via `localhost`.
+- Each pod in a cluster gets its own unique IP address.
+- All pods can communicate with all other pods by default.
+
+## Service
+
+- Service provides a stable IP address or hostname instead of manually using IP of pods.
+
+### ClusterIP
 
 ```bash
+cat <<EOF >kubeapp-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeapp
+  labels:
+    app: kubeapp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kubeapp
+  template:
+    metadata:
+      labels:
+        app: kubeapp
+    spec:
+      containers:
+        - name: kubeapp
+          image: kubenesia/kubeapp:1.2.0
+          ports:
+            - name: http
+              containerPort: 8000
+EOF
 
+cat <<EOF >kubeapp-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeapp
+  labels:
+    app: kubeapp
+spec:
+  type: ClusterIP
+  selector:
+    app: kubeapp
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8000
+EOF
+
+kubectl apply -f kubeapp-deployment.yaml -f kubeapp-service.yaml
+kubectl get svc
+kubectl describe svc kubeapp
+kubectl get ep
+kubectl describe ep
+kubectl get pods -o wide
+kubectl get pods -l app=kubeapp
+
+kubectl run test -ti --rm --image=kubenesia/kubebox -- sh
+curl kubeapp
+nslookup kubeapp
+exit
 ```
 
-## NodePort
+### ExternalName
 
 ```bash
+cat <<EOF >get-ip-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: get-ip
+spec:
+  type: ExternalName
+  externalName: google.com
+EOF
 
+kubectl apply -f get-ip-service.yaml
+kubectl get svc
+kubectl describe svc get-ip
+
+kubectl run test -it --rm --image=kubenesia/kubebox -- sh
+curl get-ip
+nslookup get-ip
+exit
 ```
 
-## NetworkPolicy
+### NodePort
 
 ```bash
+cat <<EOF >kubeapp-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeapp
+spec:
+  type: NodePort
+  selector:
+    app: kubeapp
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8000
+EOF
 
+kubectl apply -f kubeapp-service.yaml
+kubectl get svc
+kubectl describe svc kubeapp
+
+export PUBLIC_IP=$(curl -s icanhazip.com)
+export NODE_PORT=$(kubectl get svc kubeapp-service -o yaml | yq '.spec.ports[0].nodePort')
+curl "$PUBLIC_IP:$NODE_PORT"
+```
+
+### Headless Service
+
+- Used to bypass the cluster-wide IP address, name will be resolved directly to pod IPs.
+
+```bash
+cat <<EOF >kubeapp-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeapp
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: kubeapp
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8000
+EOF
+
+kubectl apply -f kubeapp-service.yaml
+kubectl get svc
+kubectl describe svc kubeapp
+
+kubectl run test -it --rm --image=kubenesia/kubebox -- sh
+curl kubeapp
+nslookup kubeapp
+exit
 ```
 
 ## Ingress
 
-```bash
+- Route HTTP/HTTPS traffic into cluster workloads.
 
+### Install ingress controller
+
+```bash
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0-beta.0/deploy/static/provider/baremetal/deploy.yaml
+kubectl get pods -n ingress-nginx
+kubectl get svc -n ingress-nginx
+```
+
+### Create Deployment & Service
+
+```bash
+kubectl create deployment blue --image=gcr.io/kuar-demo/kuard-amd64:blue --port=8080
+kubectl create deployment green --image=gcr.io/kuar-demo/kuard-amd64:green --port=8080
+
+kubectl expose deployment blue --port=80 --target-port=8080
+kubectl expose deployment green --port=80 --target-port=8080
+```
+
+### Route by host header
+
+```bash
+kubectl create ingress blue --class=nginx --rule="blue.$PUBLIC_IP.sslip.io/*=blue:80"
+kubectl create ingress green --class=nginx --rule="green.$PUBLIC_IP.sslip.io/*=green:80"
+
+kubectl get ingress
+kubectl get ingress blue -o yaml
+kubectl get ingress green -o yaml
+
+export NODE_PORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o yaml | yq '.spec.ports[0].nodePort')
+echo $NODE_PORT
+
+curl http://blue.$PUBLIC_IP.sslip.io:$NODE_PORT
+curl http://green.$PUBLIC_IP.sslip.io:$NODE_PORT
+```
+
+### Route by path
+
+````bash
+cat <<EOF >blue-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: blue
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - backend:
+          service:
+            name: blue
+            port:
+              number: 80
+        path: /blue
+        pathType: Prefix
+EOF
+
+kubectl apply -f blue-ingress.yaml
+
+```bash
+cat <<EOF >green-ingress.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: green
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - backend:
+          service:
+            name: green
+            port:
+              number: 80
+        path: /green
+        pathType: Prefix
+EOF
+
+kubectl apply -f green-ingress.yaml
+
+curl http://$PUBLIC_IP.sslip.io:$NODE_PORT/blue
+curl http://$PUBLIC_IP.sslip.io:$NODE_PORT/green
+````
+
+## Network Policy
+
+```bash
+# Create target workload
+kubectl create deployment kubeapp --image=kubenesia/kubeapp:1.2.0 --port=8000
+kubectl expose deployment kubeapp --port=80 --target-port=8000
+
+# Create NetworkPolicy to prevent access from other namespace
+cat <<EOF >netpol-deny-from-other-ns.yaml
+kind: NetworkPolicy
+apiVersion: networking.k8s.io/v1
+metadata:
+  namespace: default
+  name: deny-from-other-namespaces
+spec:
+  podSelector: {}
+  ingress:
+  - from:
+    - podSelector: {}
+EOF
+kubectl apply -f netpol-deny-from-other-ns.yaml
+
+# Check NetworkPolicy
+kubectl get networkpolicy
+
+# Test access from other namespace
+kubectl create ns dev
+kubectl run test -it -n dev --rm --image=kubenesia/kubebox -- sh
+wget -qO- --timeout=2 kubeapp.default # failed from different namespace
+kubectl run test -it --rm --image=kubenesia/kubebox -- sh
+wget -qO- --timeout=2 kubeapp # success from same namespace
+
+# Remove NetworkPolicy
+kubectl delete netpol deny-from-other-namespaces
 ```
