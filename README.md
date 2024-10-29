@@ -385,25 +385,35 @@ cat <<EOF > backup-cronjob.yaml
 apiVersion: batch/v1
 kind: CronJob
 metadata:
+  creationTimestamp: null
   name: backup
 spec:
-  schedule: "* * * * *"
-  template:
+  jobTemplate:
+    metadata:
+      creationTimestamp: null
+      name: backup
     spec:
-      containers:
-      - name: backup
-        image: busybox:1.37.0
-        command: ["/bin/sh",  "-c", "cp /etc/hostname /mnt/hostname-$(date +%s).txt"]
-        volumeMounts:
-        - name: data
-          mountPath: /mnt
-      restartPolicy: OnFailure
-      volumes:
-      - name: data
-        hostPath:
-          path: /data/backup
-          type: DirectoryOrCreate
-  backoffLimit: 3
+      template:
+        metadata:
+          creationTimestamp: null
+        spec:
+          restartPolicy: Never
+          containers:
+          - image: busybox:1.37.0
+            name: backup
+            command:
+              - /bin/sh
+              - -c
+              - cp /etc/hostname /mnt/hostname
+            volumeMounts:
+              - name: data
+                mountPath: /mnt
+          volumes:
+            - name: data
+              hostPath:
+                path: /data/asdasd
+                type: DirectoryOrCreate
+  schedule: '* * * * *'
 EOF
 kubectl apply -f backup-cronjob.yaml
 
