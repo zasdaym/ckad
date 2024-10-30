@@ -522,11 +522,11 @@ curl -v localhost:8080
 ```bash
 sudo apt-get install --yes nfs-kernel-server
 cat <<EOF | sudo tee /etc/exports
-/srv/nfs4 10.0.0.0/8(rw,no_subtree_check,all_squash)
+/srv/nfs4 10.0.0.0/8(rw,no_subtree_check,no_root_squash)
 EOF
-sudo systemctl restart nfs-kernel-server
 sudo mkdir /srv/nfs4
-sudo chown 65534:65534 /srv/nfs4
+sudo chmod -R 777 /srv/nfs4
+sudo systemctl restart nfs-kernel-server
 ```
 
 ### Install NFS client (worker)
