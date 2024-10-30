@@ -464,7 +464,6 @@ spec:
               mountPath: /opt
         - name: logshipper
           image: alpine:latest
-          restartPolicy: Always
           command: ['sh', '-c', 'tail -F /opt/logs.txt']
           volumeMounts:
             - name: data
