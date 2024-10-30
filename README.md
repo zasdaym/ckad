@@ -1422,9 +1422,9 @@ kubectl delete -f node-hello-pod.yaml
 
 ## Service
 
-- Service provides a stable IP address or hostname instead of manually using IP of pods.
-
 ### ClusterIP
+
+- ClusterIP provides a stable IP address or hostname instead of manually using IP of pods.
 
 ```bash
 cat <<EOF >kubeapp-deployment.yaml
@@ -1477,65 +1477,16 @@ kubectl describe ep
 kubectl get pods -o wide
 kubectl get pods -l app=kubeapp
 
-kubectl run test -ti --rm --image=kubenesia/kubebox -- sh
-curl kubeapp
+kubectl run netshoot -ti --rm --image=nicolaka/netshoot
+for i in {1..9}; do curl kubeapp; done
 nslookup kubeapp
 exit
-```
-
-### ExternalName
-
-```bash
-cat <<EOF >get-ip-service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: get-ip
-spec:
-  type: ExternalName
-  externalName: google.com
-EOF
-
-kubectl apply -f get-ip-service.yaml
-kubectl get svc
-kubectl describe svc get-ip
-
-kubectl run test -it --rm --image=kubenesia/kubebox -- sh
-curl get-ip
-nslookup get-ip
-exit
-```
-
-### NodePort
-
-```bash
-cat <<EOF >kubeapp-service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: kubeapp
-spec:
-  type: NodePort
-  selector:
-    app: kubeapp
-  ports:
-    - port: 80
-      protocol: TCP
-      targetPort: 8000
-EOF
-
-kubectl apply -f kubeapp-service.yaml
-kubectl get svc
-kubectl describe svc kubeapp
-
-export PUBLIC_IP=$(curl -s icanhazip.com)
-export NODE_PORT=$(kubectl get svc kubeapp-service -o yaml | yq '.spec.ports[0].nodePort')
-curl "$PUBLIC_IP:$NODE_PORT"
 ```
 
 ### Headless Service
 
 - Used to bypass the cluster-wide IP address, name will be resolved directly to pod IPs.
+- Load balancing logic will be responsibility of the client.
 
 ```bash
 cat <<EOF >kubeapp-service.yaml
@@ -1562,6 +1513,60 @@ kubectl run test -it --rm --image=kubenesia/kubebox -- sh
 curl kubeapp
 nslookup kubeapp
 exit
+```
+
+### ExternalName
+
+- Create a DNS mapping for external hostname.
+
+```bash
+cat <<EOF >get-ip-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: get-ip
+spec:
+  type: ExternalName
+  externalName: google.com
+EOF
+
+kubectl apply -f get-ip-service.yaml
+kubectl get svc
+kubectl describe svc get-ip
+
+kubectl run netshoot -it --rm --image=nicolaka/netshoot
+curl get-ip
+nslookup get-ip
+exit
+```
+
+### NodePort
+
+- Provide a static port that is externally accessible on all nodes.
+
+```bash
+cat <<EOF >kubeapp-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeapp
+spec:
+  type: NodePort
+  selector:
+    app: kubeapp
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8000
+EOF
+
+kubectl apply -f kubeapp-service.yaml
+kubectl get svc
+kubectl describe svc kubeapp
+
+export PUBLIC_IP=$(curl -s icanhazip.com)
+export NODE_PORT=$(kubectl get svc kubeapp-service -o yaml | yq '.spec.ports[0].nodePort')
+curl "$PUBLIC_IP:$NODE_PORT"
 ```
 
 ## Ingress
