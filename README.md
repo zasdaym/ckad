@@ -462,7 +462,6 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /opt
-      initContainers:
         - name: logshipper
           image: alpine:latest
           restartPolicy: Always
