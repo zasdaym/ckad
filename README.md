@@ -663,7 +663,7 @@ spec:
       - name: nginx
         image: nginx:1.27.1
 EOF
-kubectl apply -f nginx-dpeloyment.yaml
+kubectl apply -f nginx-deployment.yaml
 
 kubectl port-forward svc/nginx --address=0.0.0.0 1234:80
 
