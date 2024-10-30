@@ -666,7 +666,7 @@ EOF
 kubectl apply -f nginx-deployment.yaml
 
 kubectl run --rm -ti --image=nicolaka/netshoot -- bash
-curl -I nginx | grep Server
+curl -Is nginx | grep Server
 exit
 
 cat <<EOF >nginx-canary-deployment.yaml
@@ -692,7 +692,7 @@ EOF
 kubectl apply -f nginx-canary-deployment.yaml
 
 kubectl run --rm -ti --image=nicolaka/netshoot -- bash
-for i in {1..10}; do curl -I nginx | grep Server; done
+for i in {1..10}; do curl -Is nginx | grep Server; done
 exit
 
 kubectl delete deployment nginx
