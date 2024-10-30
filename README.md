@@ -496,7 +496,7 @@ spec:
       mountPath: /usr/share/nginx/html
   initContainers:
   - name: install
-    image: busybox:1.28
+    image: busybox:1.37
     command:
     - wget
     - -O
