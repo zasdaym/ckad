@@ -665,9 +665,9 @@ spec:
 EOF
 kubectl apply -f nginx-deployment.yaml
 
-kubectl port-forward svc/nginx --address=0.0.0.0 1234:80
-
-curl -I localhost:1234 | grep -i nginx
+kubectl run --rm -ti --image=nicolaka/netshoot -- bash
+curl -I nginx | grep Server
+exit
 
 cat <<EOF >nginx-canary-deployment.yaml
 apiVersion: apps/v1
@@ -691,11 +691,12 @@ spec:
 EOF
 kubectl apply -f nginx-canary-deployment.yaml
 
-kubectl port-forward svc/nginx --address=0.0.0.0 1234:80
+kubectl run --rm -ti --image=nicolaka/netshoot -- bash
+for i in {1..10}; do curl -I nginx | grep Server; done
+exit
 
-curl -I localhost:1234 | grep -i nginx
-curl -I localhost:1234 | grep -i nginx
-curl -I localhost:1234 | grep -i nginx
+kubectl delete deployment nginx
+kubectl delete deployment nginx-canary
 ```
 
 ## Rolling update
