@@ -529,6 +529,12 @@ sudo mkdir /srv/nfs4
 sudo chown 65534:65534 /srv/nfs4
 ```
 
+### Install NFS client (worker)
+
+```bash
+sudo apt-get install --yes nfs-common
+```
+
 ### Static provisioning
 
 ```bash
