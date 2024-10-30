@@ -802,7 +802,7 @@ kubectl get pods
 sudo apt-get install git yq -y
 curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 which helm
-helm --version
+helm version
 ```
 
 ### Create chart
