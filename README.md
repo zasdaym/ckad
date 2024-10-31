@@ -1372,6 +1372,47 @@ exit
 - Create a `postgres` StatefulSet as before, but use a `Secret` to configure `POSTGRES_PASSWORD`.
 - Check with `kubectl exec -ti postgres-0 -- psql -h 127.0.0.1 -U postgres`
 
+## ServiceAccount
+
+
+### Create ServiceAccount
+```bash
+kubectl create serviceaccount kubeapp
+kubectl get serviceaccount kubeapp
+```
+
+### Use ServiceAccount on Pod
+```bash
+cat <<EOF >kubeapp-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubeapp
+  labels:
+    app: kubeapp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: kubeapp
+  template:
+    metadata:
+      labels:
+        app: kubeapp
+    spec:
+      serviceAccountName: kubeapp
+      containers:
+        - name: kubeapp
+          image: kubenesia/kubeapp:1.2.0
+          ports:
+            - name: http
+              containerPort: 8000
+EOF
+kubectl apply -f kubeapp-deployment.yaml
+kubectl get pods
+kubectl describe pods
+```
+
 ## SecurityContext
 
 ```bash
