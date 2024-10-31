@@ -1625,11 +1625,11 @@ kubectl get svc -n ingress-nginx
 ### Create Deployment & Service
 
 ```bash
-kubectl create deployment blue --image=gcr.io/kuar-demo/kuard-amd64:blue --port=8080
-kubectl create deployment green --image=gcr.io/kuar-demo/kuard-amd64:green --port=8080
+kubectl create deployment blue --image=kubenesia/kubeapp:1.2.0
+kubectl create deployment green --image=kubenesia/kubeapp:1.2.0
 
-kubectl expose deployment blue --port=80 --target-port=8080
-kubectl expose deployment green --port=80 --target-port=8080
+kubectl expose deployment blue --port=80 --target-port=8000
+kubectl expose deployment green --port=80 --target-port=8000
 ```
 
 ### Route by host header
@@ -1673,7 +1673,6 @@ EOF
 
 kubectl apply -f blue-ingress.yaml
 
-```bash
 cat <<EOF >green-ingress.yaml
 apiVersion: networking.k8s.io/v1
 kind: Ingress
