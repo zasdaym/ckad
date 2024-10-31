@@ -1725,10 +1725,10 @@ kubectl get networkpolicy
 
 # Test access from other namespace
 kubectl create ns dev
-kubectl run test -it -n dev --rm --image=kubenesia/kubebox -- sh
+kubectl run netshoot -it --rm --image=nicolaka/netshoot -n dev
 wget -qO- --timeout=2 kubeapp.default # failed from different namespace
-kubectl run test -it --rm --image=kubenesia/kubebox -- sh
-wget -qO- --timeout=2 kubeapp # success from same namespace
+kubectl run netshoot -it --rm --image=nicolaka/netshoot
+wget -qO- --timeout=2 kubeapp.default # success from same namespace
 
 # Remove NetworkPolicy
 kubectl delete netpol deny-from-other-namespaces
