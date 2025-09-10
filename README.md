@@ -1206,6 +1206,10 @@ data:
   MODE: development
   COLOR: blue
   SERVICE: echo
+  MULTILINE: |
+    Line
+    Line
+    Line
 EOF
 
 kubectl apply -f echo-configmap.yaml
