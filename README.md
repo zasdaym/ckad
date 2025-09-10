@@ -1495,152 +1495,180 @@ kubectl delete -f node-hello-pod.yaml
 
 ## Service
 
+- Service provides a stable IP address or hostname instead of manually using IP of pods.
+
 ### ClusterIP
 
-- ClusterIP provides a stable IP address or hostname instead of manually using IP of pods.
-
 ```bash
-cat <<EOF >echo-deployment.yaml
+cat <<EOF >kubeapp-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: echo
+  name: kubeapp
   labels:
-    app: echo
+    app: kubeapp
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: echo
+      app: kubeapp
   template:
     metadata:
       labels:
-        app: echo
+        app: kubeapp
     spec:
       containers:
-        - name: echo
-          image: mendhak/http-https-echo:31
+        - name: kubeapp
+          image: kubenesia/kubeapp:1.2.0
           ports:
             - name: http
               containerPort: 8000
 EOF
 
-cat <<EOF >echo-service.yaml
+cat <<EOF >kubeapp-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: echo
+  name: kubeapp
   labels:
-    app: echo
+    app: kubeapp
 spec:
   type: ClusterIP
   selector:
-    app: echo
+    app: kubeapp
   ports:
     - port: 80
       protocol: TCP
       targetPort: 8000
 EOF
 
-kubectl apply -f echo-deployment.yaml -f echo-service.yaml
+kubectl apply -f kubeapp-deployment.yaml -f kubeapp-service.yaml
 kubectl get svc
-kubectl describe svc echo
+kubectl describe svc kubeapp
 kubectl get ep
 kubectl describe ep
 kubectl get pods -o wide
-kubectl get pods -l app=echo
+kubectl get pods -l app=kubeapp
 
-kubectl run netshoot -ti --rm --image=nicolaka/netshoot
-for i in {1..9}; do curl echo; done
-nslookup echo
-exit
-```
-
-### Headless Service
-
-- Used to bypass the cluster-wide IP address, name will be resolved directly to pod IPs.
-- Load balancing logic will be responsibility of the client.
-
-```bash
-cat <<EOF >echo-service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: echo
-spec:
-  type: ClusterIP
-  clusterIP: None
-  selector:
-    app: echo
-  ports:
-    - port: 80
-      protocol: TCP
-      targetPort: 8000
-EOF
-
-kubectl apply -f echo-service.yaml
-kubectl get svc
-kubectl describe svc echo
-
-kubectl run test -it --rm --image=nicolaka/netshoot -- sh
-curl echo
-nslookup echo
+kubectl run test -ti --rm --image=kubenesia/kubebox -- sh
+curl kubeapp
+nslookup kubeapp
 exit
 ```
 
 ### ExternalName
 
-- Create a DNS mapping for external hostname.
-
 ```bash
-cat <<EOF >get-ip-service.yaml
+cat <<EOF >gogolele-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: get-ip
+  name: gogolele
 spec:
   type: ExternalName
   externalName: google.com
 EOF
 
-kubectl apply -f get-ip-service.yaml
+kubectl apply -f gogolele.yaml
 kubectl get svc
 kubectl describe svc get-ip
 
-kubectl run netshoot -it --rm --image=nicolaka/netshoot
-curl get-ip
-nslookup get-ip
+kubectl run test -it --rm --image=kubenesia/kubebox -- sh
+curl gogolele
+nslookup gogolele
 exit
 ```
 
 ### NodePort
 
-- Provide a static port that is externally accessible on all nodes.
-
 ```bash
-cat <<EOF >echo-service.yaml
+cat <<EOF >kubeapp-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: echo
+  name: kubeapp
 spec:
   type: NodePort
   selector:
-    app: echo
+    app: kubeapp
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8000
+      nodePort: 31080
+EOF
+
+kubectl apply -f kubeapp-service.yaml
+kubectl get svc
+kubectl describe svc kubeapp
+
+export WORKER_IP=CHANGE_ME
+export NODE_PORT=$(kubectl get svc kubeapp -o yaml | yq '.spec.ports[0].nodePort')
+curl "$WORKER_IP:$NODE_PORT"
+```
+
+### Headless Service
+
+- Used to bypass the cluster-wide IP address, name will be resolved directly to pod IPs.
+
+```bash
+cat <<EOF >kubeapp-headless-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubeapp-headless
+spec:
+  type: ClusterIP
+  clusterIP: None
+  selector:
+    app: kubeapp
   ports:
     - port: 80
       protocol: TCP
       targetPort: 8000
 EOF
 
-kubectl apply -f echo-service.yaml
-kubectl get svc
-kubectl describe svc echo
+kubectl apply -f kubeapp-headless-service.yaml
+kubectl get svc | grep kubeapp
+kubectl describe svc kubeapp
+kubectl describe svc kubeapp-headless
 
-export PUBLIC_IP=$(curl -s icanhazip.com)
-export NODE_PORT=$(kubectl get svc echo-service -o yaml | yq '.spec.ports[0].nodePort')
-curl "$PUBLIC_IP:$NODE_PORT"
+kubectl run test -it --rm --image=kubenesia/kubebox -- sh
+
+nslookup kubeapp
+nslookup kubeapp-headless
+
+curl kubeapp
+curl kubeapp-headless:8000
 ```
+
+### Review
+
+- Run the following commands:
+
+```bash
+cat <<EOF >nginx-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  selector:
+    application: nginx
+    role: web
+  ports:
+    - port: 80
+      protocol: TCP
+      targetPort: 8080
+EOF
+kubectl apply -f nginx-service.yaml
+kubectl create deployment nginx --image=nginx:1.27.2
+kubectl port-forward svc/nginx --address 0.0.0.0 1234:8080
+curl localhost:1234
+```
+
+- Does it work? If not, what's wrong?
+- Create a Deployment `echo` with image `mendhak/http-https-echo:31`. Create a Service with type `NodePort` to expose the previous Deployment with the same. The application port is `8080`. Also create a HPA with target CPU utilization of 60% and max replicas of 5.
 
 ## Ingress
 
