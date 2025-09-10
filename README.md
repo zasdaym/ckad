@@ -1377,40 +1377,68 @@ exit
 
 ### Create ServiceAccount
 ```bash
-kubectl create serviceaccount echo
-kubectl get serviceaccount echo
+kubectl create serviceaccount pod-reader
+kubectl get serviceaccount pod-reader
+```
+
+### Create ClusterRole and ClusterRoleBinding
+```bash
+cat <<EOF >pod-reader-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pod-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pod-reader
+subjects:
+- kind: ServiceAccount
+  name: pod-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pod-reader
+EOF
 ```
 
 ### Use ServiceAccount on Pod
 ```bash
-cat <<EOF >echo-deployment.yaml
+cat <<EOF >pod-reader-deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: echo
+  name: pod-reader
   labels:
-    app: echo
+    app: pod-reader
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
-      app: echo
+      app: pod-reader
   template:
     metadata:
       labels:
-        app: echo
+        app: pod-reader
     spec:
-      serviceAccountName: echo
+      serviceAccountName: pod-reader
       containers:
-        - name: echo
-          image: mendhak/http-https-echo:31
-          ports:
-            - name: http
-              containerPort: 8000
+        - name: pod-reader
+          image: bitnami/kubectl:1.33.4
+          command:
+            - sleep
+            - "3600"
 EOF
-kubectl apply -f echo-deployment.yaml
+kubectl apply -f pod-reader-deployment.yaml
+
+kubectl exec -ti deployment/pod-reader -- sh
 kubectl get pods
-kubectl describe pods
+kubectl delete pods --all # failed
 ```
 
 ## SecurityContext
