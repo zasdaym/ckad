@@ -2044,6 +2044,29 @@ curl -m 5 -s backend.marketplace # fail
 
 ### Allow only from specific namespace
 ```bash
+kubectl create ns rnd
+kubectl create ns finops
+kubectl label ns rnd tier=public
+kubectl label ns finops tier=private
+
+cat <<EOF >allow-backend-from-namespaces.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-backend-from-namespaces
+  namespace: marketplace
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          tier: private
+EOF
+
+kubectl apply -f allow-backend-from-namespaces.yaml
 ```
 
 ## Review
