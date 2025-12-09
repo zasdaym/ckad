@@ -257,19 +257,6 @@ Like Deployment, but used to deploy stateful application. Maintain a sticky iden
 
 ```bash
 cat <<EOF >mysql-statefulset.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: mysql
-  labels:
-    app: mysql
-spec:
-  ports:
-    - port: 3306
-      name: mysql
-  clusterIP: None
-  selector:
-    app: mysql
 ---
 apiVersion: apps/v1
 kind: StatefulSet
