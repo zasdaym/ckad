@@ -770,7 +770,7 @@ spec:
         app: echo
     spec:
       containers:
-        - image: mendhak/http-https-echo:37
+        - image: mendhak/http-https-echo:32
           name: echo
 EOF
 
