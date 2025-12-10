@@ -714,7 +714,7 @@ EOF
 kubectl apply -f echo.yaml
 kubectl get pods
 
-kubectl set image deployment echo echo=mendhak-http-https/echo:37
+kubectl set image deployment echo echo=mendhak-http-https/echo:32
 kubectl get pods
 
 ```bash
