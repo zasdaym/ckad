@@ -2046,9 +2046,9 @@ kubectl create deployment backend --namespace=marketplace --image=nginx:1.27.2
 kubectl create deployment frontend --namespace=marketplace --image=nginx:1.27.2
 kubectl create deployment experiment --namespace=marketplace --image=nginx:1.27.2
 
-kubectl expose deployment backend --port=80
-kubectl expose deployment frontend --port=80
-kubectl expose deployment experiment --port=80
+kubectl expose deployment backend --namespace=marketplace --port=80
+kubectl expose deployment frontend --namespace=marketplace --port=80
+kubectl expose deployment experiment --namespace=marketplace --port=80
 
 cat <<EOF >marketplace-netpol.yaml
 apiVersion: networking.k8s.io/v1
@@ -2064,29 +2064,27 @@ spec:
   - from:
     - podSelector:
         matchLabels:
-          app: frontendn
+          app: frontend
 EOF
 kubectl apply -f marketplace-netpol.yaml
 
 kubectl exec -n marketplace -ti deployment/frontend -- bash
-curl -m 5 -s backend.marketplace # ok
+curl -m 5 backend.marketplace # ok
 
 kubectl exec -n marketplace -ti deployment/experiment -- bash
-curl -m 5 -s backend.marketplace # fail
+curl -m 5 backend.marketplace # fail
+
+kubectl delete -f marketplace-netpol.yaml
 ```
 
 ### Allow only from specific namespace
-```bash
-kubectl create ns rnd
-kubectl create ns finops
-kubectl label ns rnd tier=public
-kubectl label ns finops tier=private
 
-cat <<EOF >allow-backend-from-namespaces.yaml
+```bash
+cat <<EOF >allow-from-specific-namespace-netpol.yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-backend-from-namespaces
+  name: allow-backend-from-research
   namespace: marketplace
 spec:
   podSelector:
@@ -2096,10 +2094,18 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          tier: private
+          department: research
 EOF
+kubectl apply -f allow-from-specific-namespace-netpol.yaml
 
-kubectl apply -f allow-backend-from-namespaces.yaml
+kubectl create namespace foobar
+kubectl label namespace foobar department=research
+
+kubectl run test -it -n foobar --rm --image=kubenesia/kubebox -- sh
+curl -m 5 backend.marketplace # ok
+
+kubectl run test -it -n default --rm --image=kubenesia/kubebox -- sh
+curl -m 5 backend.marketplace # fail
 ```
 
 ## Review
@@ -2109,11 +2115,11 @@ kubectl apply -f allow-backend-from-namespaces.yaml
   - `gateway`
   - `travel`
   - `shadow`
-- Inside namespace `food`, create 2 deployments:
+- Inside namespace `food`, create 3 deployments:
   - `order`
   - `tenant`
   - `promo`
 - Create NetworkPolicy `allow-from-ride` on namespace `food` to allow access from namespace `ride`.
-- Create NetworkPolicy `allow-travel-from-gateway` on namespace `ride` to only allow pod with label `app=travel` to access pod with label `app=gateway` inside the same namespace.
+- Create NetworkPolicy `allow-gateway-from-travel` on namespace `ride` to only allow pod with label `app=travel` to access pod with label `app=gateway` inside the same namespace.
 - All deployments should use image `nginx:1.27.2`.
 - All deployments should have a Service with type `ClusterIP`.
