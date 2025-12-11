@@ -1698,7 +1698,7 @@ spec:
       targetPort: 8080
 EOF
 kubectl apply -f nginx-service.yaml
-kubectl create deployment nginx --image=nginx:1.27.2
+kubectl create deployment nginx --image=public.ecr.aws/docker/library/nginx:1.27.2
 kubectl port-forward svc/nginx --address 0.0.0.0 1234:8080
 curl localhost:1234
 ```
