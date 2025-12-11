@@ -1637,10 +1637,7 @@ EOF
 kubectl apply -f kubeapp-service.yaml
 kubectl get svc
 kubectl describe svc kubeapp
-
-export WORKER_IP=CHANGE_ME
-export NODE_PORT=$(kubectl get svc kubeapp -o yaml | yq '.spec.ports[0].nodePort')
-curl "$WORKER_IP:$NODE_PORT"
+curl 127.0.0.1:31080
 ```
 
 ### Headless Service
@@ -1790,8 +1787,8 @@ EOF
 
 kubectl apply -f green-ingress.yaml
 
-curl http://$PUBLIC_IP.sslip.io:$NODE_PORT/blue
-curl http://$PUBLIC_IP.sslip.io:$NODE_PORT/green
+curl --connect-to ::127.0.0.1:$NODE_PORT/blue
+curl --connect-to ::127.0.0.1:$NODE_PORT/green
 ````
 
 ## Gateway
@@ -1957,8 +1954,8 @@ spec:
       port: 80
 EOF
 
-curl --connect-to ::$WORKER_IP:30080 example.com/blue
-curl --connect-to ::$WORKER_IP:30080 example.com/green
+curl --connect-to ::127.0.0.1:30080 example.com/blue
+curl --connect-to ::127.0.0.1:30080 example.com/green
 ```
 
 ### Weight
@@ -1989,17 +1986,17 @@ spec:
       weight: 50
 EOF
 
-curl --connect-to ::$WORKER_IP:30080 example.com/weight
-curl --connect-to ::$WORKER_IP:30080 example.com/weight
-curl --connect-to ::$WORKER_IP:30080 example.com/weight
-curl --connect-to ::$WORKER_IP:30080 example.com/weight
+curl --connect-to ::127.0.0.1:30080 example.com/weight
+curl --connect-to ::127.0.0.1:30080 example.com/weight
+curl --connect-to ::127.0.0.1:30080 example.com/weight
+curl --connect-to ::127.0.0.1:30080 example.com/weight
 ```
 
 ### Review
 
 - Create two deployments `blue` and `green` with image `mendhak/http-https-echo:31`.
 - The deployment should be accessible on `loadbalance.com` with 80:20 balancing between blue and green. Use HTTPRoute with name `loadbalance` to achieve this.
-- Run `curl -s --connect-to ::$WORKER_IP:30180 loadbalance.com | grep hostname` multiple times to check the result.
+- Run `curl -s --connect-to ::127.0.0.1:30180 loadbalance.com | grep hostname` multiple times to check the result.
 
 ## Network Policy
 
