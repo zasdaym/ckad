@@ -1731,8 +1731,8 @@ kubectl expose deployment green --port=80 --target-port=8080
 ### Route by host header
 
 ```bash
-kubectl create ingress blue --class=nginx --rule="blue.$PUBLIC_IP.sslip.io/*=blue:80"
-kubectl create ingress green --class=nginx --rule="green.$PUBLIC_IP.sslip.io/*=green:80"
+kubectl create ingress blue --class=nginx --rule="blue.example.com/*=blue:80"
+kubectl create ingress green --class=nginx --rule="green.example.com/*=green:80"
 
 kubectl get ingress
 kubectl get ingress blue -o yaml
@@ -1741,8 +1741,8 @@ kubectl get ingress green -o yaml
 export NODE_PORT=$(kubectl get svc -n ingress-nginx ingress-nginx-controller -o yaml | yq '.spec.ports[0].nodePort')
 echo $NODE_PORT
 
-curl http://blue.$PUBLIC_IP.sslip.io:$NODE_PORT
-curl http://green.$PUBLIC_IP.sslip.io:$NODE_PORT
+curl --connect-to ::127.0.0.1:$NODE_PORT http://blue.example.com
+curl --connect-to ::127.0.0.1:$NODE_PORT http://green.example.com
 ```
 
 ### Route by path
@@ -1906,8 +1906,8 @@ spec:
       port: 80
 EOF
 
-curl --connect-to ::$WORKER_IP:30080 blue.example.com
-curl --connect-to ::$WORKER_IP:30080 green.example.com
+curl --connect-to ::127.0.0.1:30080 blue.example.com
+curl --connect-to ::127.0.0.1:30080 green.example.com
 ```
 
 ### Route by path
